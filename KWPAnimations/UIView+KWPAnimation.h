@@ -7,44 +7,11 @@
 //
 
 #import <UIKit/UIKit.h>
-
-//KWPAnimationType
-typedef enum {
-    KWPAnimationMovingTypeMove = 1,
-    KWPAnimationMovingTypeBounce,
-    KWPAnimationMovingTypeShake,
-    KWPAnimationTransformTypeScale,
-    KWPAnimationTransformTypeCornerRadius,
-    KWPAnimationTransformTypeBorderWidth,
-    KWPAnimationTransformTypeBorderColor,
-    
-    KWPAnimationTypeCount,
-} KWPAnimationType;
-
-
-extern NSString *const KeyFrameTypeName[KWPAnimationTypeCount];
-NSString *const KeyFrameTypeName[KWPAnimationTypeCount] = {
-    [KWPAnimationMovingTypeMove]          = @"transform.translation",
-    [KWPAnimationMovingTypeBounce]        = @"transform.translation",
-    [KWPAnimationMovingTypeShake]         = @"transform.translation",
-    [KWPAnimationTransformTypeScale]         = @"transform.scale",
-    [KWPAnimationTransformTypeCornerRadius]  = @"cornerRadius",
-    [KWPAnimationTransformTypeBorderWidth]   = @"borderWidth",
-    [KWPAnimationTransformTypeBorderColor]   = @"borderColor",
-};
-
-
-//KWPAnimationOptions
-typedef NS_ENUM(NSInteger, KWPAnimationDirectionOption)
-{
-    KWPAnimationDirectionOptionTop = 0,
-    KWPAnimationDirectionOptionBottom,
-    KWPAnimationDirectionOptionLeft,
-    KWPAnimationDirectionOptionRight
-};
-
+#import "UIView+KWPAnimationType.h"
 
 @interface UIView (KWAnimationExtension)
+
+typedef void (^CompleteAnimationBlocks)(BOOL result);     //!< animationが終わった時の通知ブロック
 
 @property (retain, nonatomic) NSMutableArray <CAKeyframeAnimation*>* keyFrames;
 
@@ -52,15 +19,22 @@ typedef NS_ENUM(NSInteger, KWPAnimationDirectionOption)
 -(void) startAnimations;
 -(void) animationDuration:(CGFloat)duration;
 -(void) animationDuration:(CGFloat)duration delay:(CGFloat)delay;
--(void) animationDuration:(CGFloat)duration delay:(CGFloat)delay completion:(BOOL)completion;
 
 //set Moving Animation
 -(void)setMovingAnimationType:(KWPAnimationType)animationType
               animationOption:(KWPAnimationDirectionOption)animationOption
                   maxDistance:(CGFloat)maxDistance;
 
+-(void) setMovingAnimationType:(KWPAnimationType)animationType
+               animationOption:(KWPAnimationDirectionOption)animationOption
+                   maxDistance:(CGFloat)maxDistance
+                      duration:(CGFloat)duration
+                        serial:(BOOL)serial;
+
 //set Transform Animation
 -(void)setTransformAnimationType:(KWPAnimationType)animationType
-                         objects:(NSObject*)objects, ... NS_REQUIRES_NIL_TERMINATION;
+                        duration:(CGFloat)duration
+                          serial:(BOOL)serial
+                         objects:(NSObject*)objects, ...NS_REQUIRES_NIL_TERMINATION;
 
 @end

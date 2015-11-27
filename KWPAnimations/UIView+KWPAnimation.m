@@ -23,9 +23,10 @@ va_end(args);\
 
 #define ScreenSize [ [ UIScreen mainScreen ] bounds ].size
 
-
 @implementation UIView (KWAnimationExtension)
 
+static float delayTime          = 0;
+static float previousDuration   = 0;
 
 #pragma mark -
 #pragma mark KeyFrames Getter&Setter
@@ -53,17 +54,17 @@ va_end(args);\
                       delay:(CGFloat)delay
                  completion:(BOOL)completion
 {
+    NSLog(@"delayTime : %f",delayTime);
+    
     CAAnimationGroup* groupAnimations = [CAAnimationGroup animation];
     groupAnimations.animations = (NSArray*)self.keyFrames;
     
     if (duration > 0) {
         groupAnimations.duration = duration;
-    }else{
-        groupAnimations.duration = 1;
     }
     
     if (delay > 0) {
-        groupAnimations.beginTime = CACurrentMediaTime() * delay;
+        groupAnimations.beginTime = delay;
     }
     
     if (completion) {
@@ -76,7 +77,8 @@ va_end(args);\
 
 -(void) startAnimations
 {
-    [self getGroupAnimations:NOPE_V delay:NOPE_V completion:NO];
+    NSLog(@"%f",delayTime + previousDuration);
+    [self getGroupAnimations:(delayTime + previousDuration) delay:NOPE_V completion:NO];
 }
 
 -(void) animationDuration:(CGFloat)duration
@@ -89,9 +91,23 @@ va_end(args);\
     [self getGroupAnimations:duration delay:delay completion:NO];
 }
 
--(void) animationDuration:(CGFloat)duration delay:(CGFloat)delay completion:(BOOL)completion
+-(void) animationDuration:(CGFloat)duration delay:(CGFloat)delay completion:(CompleteAnimationBlocks)completion
 {
-    [self getGroupAnimations:duration delay:delay completion:completion];
+    
+    NSOperationQueue *queue = [[NSOperationQueue alloc]init];
+    
+    NSOperation *operation = [NSBlockOperation blockOperationWithBlock:^{
+        [self getGroupAnimations:duration delay:delay completion:YES];
+        
+        if (completion) {
+            completion(YES);
+        }else{
+            completion(NO);
+        }
+    }];
+    
+    [queue addOperation:operation];
+    
 }
 
 
@@ -151,14 +167,77 @@ va_end(args);\
 #pragma mark -
 #pragma mark Set Moving Animations
 
--(void)setMovingAnimationType:(KWPAnimationType)animationType
-              animationOption:(KWPAnimationDirectionOption)animationOption
-                  maxDistance:(CGFloat)maxDistance
+-(void) setMovingAnimationType:(KWPAnimationType)animationType
+               animationOption:(KWPAnimationDirectionOption)animationOption
+                   maxDistance:(CGFloat)maxDistance
+{
+ 
+    NSMutableDictionary *animationInfo = [self setAnimationInfo:animationType animationOption:animationOption maxDistance:maxDistance];
+    if (animationInfo != nil) {
+        CAKeyframeAnimation *animation = [self setValuesMoveAnimationType:animationType
+                                                                     move:[[animationInfo objectForKey:@"move"] integerValue]
+                                                                  keyPath:[animationInfo objectForKey:@"keyPath"]
+                                                              maxDistance:maxDistance];
+        [self.keyFrames addObject:animation];
+    }
+}
+
+-(void) setMovingAnimationType:(KWPAnimationType)animationType
+               animationOption:(KWPAnimationDirectionOption)animationOption
+                   maxDistance:(CGFloat)maxDistance
+                      duration:(CGFloat)duration
+                        serial:(BOOL)serial
 {
     
+    NSMutableDictionary *animationInfo = [self setAnimationInfo:animationType animationOption:animationOption maxDistance:maxDistance];
+    if (animationInfo != nil) {
+        CAKeyframeAnimation *animation = [self setValuesMoveAnimationType:animationType
+                                                                     move:[[animationInfo objectForKey:@"move"] integerValue]
+                                                                  keyPath:[animationInfo objectForKey:@"keyPath"]
+                                                              maxDistance:maxDistance];
+        
+        if (duration < 0) {
+            NSLog(@"durationが0以下です。再設定してください。");
+            NSLog(@"durationのデフォルト値なし");
+        }else{
+            
+            [self setDelayTime:serial currentDuration:duration];
+            animation.beginTime = delayTime;
+            animation.duration = duration;
+            
+        }
+        [self.keyFrames addObject:animation];
+    }
+}
+
+- (void)setDelayTime:(BOOL)serial currentDuration:(float)duration
+{
+    if ([self.keyFrames lastObject] != nil)
+    {
+        if (serial) {
+            delayTime = delayTime + previousDuration;
+            previousDuration = 0;
+        }
+    }
+    
+    else
+    {
+        NSLog(@"以前のAnimationがありません。");
+    }
+
+    previousDuration = previousDuration < duration ? duration : previousDuration;
+}
+
+
+- (NSMutableDictionary*) setAnimationInfo:(KWPAnimationType)animationType
+                          animationOption:(KWPAnimationDirectionOption)animationOption
+                              maxDistance:(CGFloat)maxDistance
+{
     if ([self checkValidMovingAnimationType:animationType]) {
         
-        NSString *keyPath = KeyFrameTypeName[animationType];
+        NSMutableDictionary *animationInfo = [[NSMutableDictionary alloc] init];
+        
+        NSString *keyPath = [self getAnimationKeyPath:animationType];
         
         if ([self checkVerticalAnimationOption:animationOption])
         {// animationOptionを見てvertical, horizontal判断する
@@ -172,7 +251,9 @@ va_end(args);\
             keyPath = [keyPath stringByAppendingString:@".x"];
         }
         
-        NSInteger move = [self checkAnimationDirection:animationOption] ? 1 : -1;
+        [animationInfo setObject:keyPath forKey:@"keyPath"];
+        
+        NSInteger move = [self checkAnimationDirection:animationOption] ? -1 : 1;
         
         if (maxDistance < 0) {
             NSLog(@"maxDistanceの値は0以上入力してください。");
@@ -180,18 +261,20 @@ va_end(args);\
             maxDistance = 100.f;
         }
         
-        [self setValuesMoveAnimationType:animationType
-                                    move:move
-                                 keyPath:keyPath
-                             maxDistance:maxDistance];
+        [animationInfo setObject:[NSNumber numberWithInteger:move] forKey:@"move"];
         
+        return animationInfo;
+        
+    }else{
+        NSLog(@"MovingAnimationType（move, bounce, shakeなど）ではありません。");
+        return nil;
     }
 }
 
--(void)setValuesMoveAnimationType:(KWPAnimationType)animationType
-                             move:(NSInteger)move
-                          keyPath:(NSString*)keyPath
-                      maxDistance:(CGFloat)maxDistance
+-(CAKeyframeAnimation*)setValuesMoveAnimationType:(KWPAnimationType)animationType
+                                             move:(NSInteger)move
+                                          keyPath:(NSString*)keyPath
+                                      maxDistance:(CGFloat)maxDistance
 {
     CAKeyframeAnimation *animation = [CAKeyframeAnimation animationWithKeyPath:keyPath];
     
@@ -233,13 +316,13 @@ va_end(args);\
             
         default:
             NSLog(@"AnimationSetting失敗：正しくないanimationTypeです。");
-            return;
+            return nil;
             break;
     }
     
     animation.values = (NSArray*)animationValues;
     
-    [self.keyFrames addObject:animation];
+    return animation;
     
 }
 
@@ -247,15 +330,26 @@ va_end(args);\
 #pragma mark Set Transform Animation
 
 -(void)setTransformAnimationType:(KWPAnimationType)animationType
+                        duration:(CGFloat)duration
+                          serial:(BOOL)serial
                          objects:(NSObject*)objects, ...
 {
     if (![self checkValidMovingAnimationType:animationType]) {
-        NSString *keyPath = KeyFrameTypeName[animationType];
+        NSString *keyPath = [self getAnimationKeyPath:animationType];
         CAKeyframeAnimation *animation = [CAKeyframeAnimation animationWithKeyPath:keyPath];
         animation.values = EnumerateObjects(objects);
+       
+        [self setDelayTime:serial currentDuration:duration];
+        
+        animation.beginTime = delayTime;
+        animation.duration = duration;
         
         [self.keyFrames addObject:animation];
+    }else{
+        NSLog(@"TransformAnimationTypeではありません。");
     }
 }
+
+#pragma mark 
 
 @end
